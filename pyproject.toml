@@ -28,3 +28,6 @@ Issues = "https://github.com/zyzniewski/celery-bittensor/issues"
 
 [tool.hatch.version]
 path = "src/celery_bittensor/version.py"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
