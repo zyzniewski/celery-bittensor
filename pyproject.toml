@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "celery-bittensor"
+authors = [
+  { name="Tomasz Żyźniewski", email="zyzniewski@gmail.com" },
+]
+description = "Celery's Bittensor Schedule"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+dependencies = [
+    "bittensor == 11.*",
+    "celery == 5.*",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/zyzniewski/celery-bittensor"
+Issues = "https://github.com/zyzniewski/celery-bittensor/issues"
+
+[tool.hatch.version]
+path = "src/celery_bittensor/version.py"
