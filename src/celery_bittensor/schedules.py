@@ -168,8 +168,10 @@ class schedule(BaseBittensorSchedule):
 
     def _prev_block(self, block: int) -> int:
         if self.relative:
-            base = self.last_run_at.number
-            return base + (block - base) // self.run_every * self.run_every
+            return block - block % self.run_every
+
+        base = self.last_run_at.number
+        return base + (block - base) // self.run_every * self.run_every
 
         return block - block % self.run_every
 
