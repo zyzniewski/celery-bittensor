@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import datetime
 import logging
+import queue
 import threading
 from typing import NamedTuple
 
@@ -11,6 +12,21 @@ logger = logging.getLogger(__name__)
 class Block(NamedTuple):
     number: int
     timestamp: datetime.datetime
+
+
+class PubSub:
+    def __init__(self):
+        self._subscribers: list[queue.Queue] = []
+
+    def publish(self, message):
+        for subscriber in self._subscribers:
+            try:
+                subscriber.put_nowait(message)
+            except queue.Full:
+                logger.debug("Subscriber queue is full")
+
+    def subscribe(self, queue: queue.Queue):
+        self._subscribers = [*self._subscribers, queue]
 
 
 class BittensorSynced:
@@ -24,8 +40,8 @@ class BittensorSynced:
         self.network = network
         self.finalized = finalized
 
-        self.block: Block | None = None
         self.block_time: float | None = None
+        self.blocks = PubSub()
 
         self._thread = threading.Thread(
             daemon=True,
@@ -72,7 +88,7 @@ class BittensorSynced:
             try:
                 await self._blocks_generator()
             except Exception:
-                self.block = None
+                self.block_time = None
 
                 logger.exception(
                     "Error occured during processing on %s. Reconnecting in %ds",
@@ -97,10 +113,12 @@ class BittensorSynced:
 
             logger.info("Awaiting for blocks on %s", self.network)
 
-            async for block in client.blocks(finalized=self.finalized):
-                logger.info("New block received on %s: %d", self.network, block.number)
+            async for block_header in client.blocks(finalized=self.finalized):
+                logger.info("New block seen on %s: %d", self.network, block_header.number)
 
-                self.block = Block(
-                    block.number,
+                block = Block(
+                    block_header.number,
                     datetime.datetime.now(datetime.timezone.utc),
                 )
+
+                self.blocks.publish(block)

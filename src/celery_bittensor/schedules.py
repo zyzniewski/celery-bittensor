@@ -1,5 +1,6 @@
 import atexit
 import datetime
+import queue
 import threading
 from collections.abc import Callable
 from typing import ClassVar
@@ -19,6 +20,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         self,
         network: str = "finney",
         finalized: bool = True,
+        backlog: int = 0,
         nowfun: Callable | None = None,
         app: celery.Celery | None = None,
     ):
@@ -29,6 +31,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         self.last_run_at = Block(0, self.maybe_make_aware(datetime.datetime.min))
 
         self._bittensor: BittensorSynced | None = None
+        self._blocks = queue.Queue[Block](maxsize=backlog)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BaseBittensorSchedule):
@@ -42,6 +45,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
 
     def __getstate__(self) -> dict:
         return {
+            "backlog": self._blocks.maxsize,
             "finalized": self.finalized,
             "last_run_at": self.last_run_at,
             "network": self.network,
@@ -49,9 +53,12 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         }
 
     def __setstate__(self, state: dict) -> None:
+        backlog = state.pop("backlog", 0)
+
         self.__dict__.update(state)
         self._app = None
         self._bittensor = None
+        self._blocks = queue.Queue[Block](maxsize=backlog)
 
     @property
     def bittensor(self) -> BittensorSynced:
@@ -71,18 +78,19 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
                 self._bittensor = BaseBittensorSchedule._clients[
                     (self.network, self.finalized)
                 ]
+                self._bittensor.blocks.subscribe(self._blocks)
 
         return self._bittensor
 
     def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
-        if not self.bittensor.block_time:
+        if self._blocks.empty() and not self.bittensor.block_time:
             return celery.schedules.schedstate(
                 is_due=False, next=self.INIT_PULL.total_seconds()
             )
 
-        block = self.bittensor.block
-
-        if not block:
+        try:
+            block = self._blocks.get_nowait()
+        except queue.Empty:
             return celery.schedules.schedstate(
                 is_due=False, next=self.INIT_PULL.total_seconds()
             )
@@ -94,6 +102,12 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
 
         if is_due:
             self.last_run_at = block
+
+        if not self._blocks.empty():
+            return celery.schedules.schedstate(
+                is_due=is_due,
+                next=0,
+            )
 
         return celery.schedules.schedstate(
             is_due=is_due,
@@ -123,10 +137,7 @@ class schedule(BaseBittensorSchedule):
         self,
         run_every: int,
         relative: bool = False,
-        network: str = "finney",
-        finalized: bool = True,
-        nowfun: Callable | None = None,
-        app: celery.Celery | None = None,
+        **kwargs,
     ):
         if not isinstance(run_every, int):
             raise TypeError("run_every must be an integer")
@@ -134,12 +145,7 @@ class schedule(BaseBittensorSchedule):
         if run_every <= 0:
             raise ValueError("run_every must be a positive integer")
 
-        super().__init__(
-            network,
-            finalized,
-            nowfun,
-            app,
-        )
+        super().__init__(**kwargs)
 
         self.run_every = run_every
         self.relative = relative

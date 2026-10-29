@@ -31,9 +31,9 @@ BLOCK_TIME = datetime.timedelta(seconds=12)
 def test_schedule_prev_block(scheduler, last_run_at, block_number, prev_block):
     scheduler.last_run_at = Block(last_run_at, datetime.datetime.now())
     scheduler._bittensor = unittest.mock.Mock(
-        block=Block(block_number, datetime.datetime.now()),
         block_time=BLOCK_TIME.total_seconds(),
     )
+    scheduler._blocks.put_nowait(Block(block_number, datetime.datetime.now()))
 
     assert scheduler._prev_block(block_number) == prev_block
 
@@ -60,9 +60,9 @@ def test_schedule_prev_block(scheduler, last_run_at, block_number, prev_block):
 def test_schedule_next_block(scheduler, last_run_at, block_number, next_block):
     scheduler.last_run_at = Block(last_run_at, datetime.datetime.now())
     scheduler._bittensor = unittest.mock.Mock(
-        block=Block(block_number, datetime.datetime.now()),
         block_time=BLOCK_TIME.total_seconds(),
     )
+    scheduler._blocks.put_nowait(Block(block_number, datetime.datetime.now()))
 
     assert scheduler._next_block(block_number) == next_block
 
@@ -91,8 +91,8 @@ def test_schedule_is_due(scheduler, last_run_at, block_number, is_due):
 
     scheduler.last_run_at = Block(last_run_at, now)
     scheduler._bittensor = unittest.mock.Mock(
-        block=Block(block_number, now),
         block_time=BLOCK_TIME.total_seconds(),
     )
+    scheduler._blocks.put_nowait(Block(block_number, now))
 
     assert scheduler.is_due(now).is_due is is_due
