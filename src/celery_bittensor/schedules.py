@@ -91,9 +91,12 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         try:
             block = self._blocks.get_nowait()
         except queue.Empty:
-            return celery.schedules.schedstate(
-                is_due=False, next=self.INIT_PULL.total_seconds()
-            )
+            if self.last_run_at.number == 0:
+                return celery.schedules.schedstate(
+                    is_due=False, next=self.INIT_PULL.total_seconds()
+                )
+
+            block = self.last_run_at
 
         if self.last_run_at.number == 0:
             self.last_run_at = block
