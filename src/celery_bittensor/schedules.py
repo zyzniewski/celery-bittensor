@@ -156,10 +156,12 @@ class schedule(BaseBittensorSchedule):
 
     def __getstate__(self) -> dict:
         state = super().__getstate__()
-        state.update({
-            "run_every": self.run_every,
-            "relative": self.relative,
-        })
+        state.update(
+            {
+                "run_every": self.run_every,
+                "relative": self.relative,
+            }
+        )
 
         return state
 
