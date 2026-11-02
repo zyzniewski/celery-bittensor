@@ -14,8 +14,6 @@ STOP_TIMEOUT = datetime.timedelta(seconds=5)
 
 
 class BaseBittensorSchedule(celery.schedules.BaseSchedule):
-    INIT_PULL = datetime.timedelta(microseconds=100)
-
     _lock: ClassVar[threading.Lock] = threading.Lock()
     _clients: ClassVar[dict[tuple[str, bool], BittensorSynced]] = {}
 
@@ -24,13 +22,18 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         network: str = "finney",
         finalized: bool = True,
         backlog: int = 0,
+        interval: datetime.timedelta | float = datetime.timedelta(seconds=1.0),
         nowfun: Callable | None = None,
         app: celery.Celery | None = None,
     ):
         super().__init__(nowfun, app)
 
+        if not isinstance(interval, datetime.timedelta):
+            interval = datetime.timedelta(seconds=interval)
+
         self.network = network
         self.finalized = finalized
+        self.interval = interval
         self.last_run_at = Block(0, self.maybe_make_aware(datetime.datetime.min))
 
         self._bittensor: BittensorSynced | None = None
@@ -41,6 +44,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
             return (
                 self.network == other.network
                 and self.finalized == other.finalized
+                and self.interval == other.interval
                 and super().__eq__(other)
             )
 
@@ -50,12 +54,15 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         return {
             "backlog": self._blocks.maxsize,
             "finalized": self.finalized,
+            "interval": self.interval,
             "last_run_at": self.last_run_at,
             "network": self.network,
             "nowfun": self.nowfun,
         }
 
     def __setstate__(self, state: dict) -> None:
+        state.setdefault("interval", datetime.timedelta(seconds=1.0))
+
         backlog = state.pop("backlog", 0)
 
         self.__dict__.update(state)
@@ -88,7 +95,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
     def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
         if self._blocks.empty() and not self.bittensor.block_time:
             return celery.schedules.schedstate(
-                is_due=False, next=self.INIT_PULL.total_seconds()
+                is_due=False, next=self.interval.total_seconds()
             )
 
         try:
@@ -96,7 +103,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         except queue.Empty:
             if self.last_run_at.number == 0:
                 return celery.schedules.schedstate(
-                    is_due=False, next=self.INIT_PULL.total_seconds()
+                    is_due=False, next=self.interval.total_seconds()
                 )
 
             block = self.last_run_at
@@ -135,7 +142,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
             seconds=self.bittensor.block_time
         ) - elapsed
 
-        return max(remaining, self.INIT_PULL)
+        return max(remaining, self.interval)
 
 
 class schedule(BaseBittensorSchedule):
