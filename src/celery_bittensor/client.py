@@ -4,6 +4,7 @@ import datetime
 import logging
 import queue
 import threading
+import weakref
 from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class Block(NamedTuple):
 
 class PubSub:
     def __init__(self):
-        self._subscribers: list[queue.Queue] = []
+        self._subscribers = weakref.WeakSet[queue.Queue]()
 
     def publish(self, message):
         for subscriber in self._subscribers:
@@ -25,8 +26,8 @@ class PubSub:
             except queue.Full:
                 logger.debug("Subscriber queue is full")
 
-    def subscribe(self, queue: queue.Queue):
-        self._subscribers = [*self._subscribers, queue]
+    def subscribe(self, q: queue.Queue):
+        self._subscribers = self._subscribers.union([q])
 
 
 class BittensorSynced:
