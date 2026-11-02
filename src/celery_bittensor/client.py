@@ -65,8 +65,8 @@ class BittensorSynced:
             with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(task.cancel)
 
-    def join(self) -> None:
-        self._thread.join()
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout)
 
     def _run(self) -> None:
         try:
@@ -81,10 +81,7 @@ class BittensorSynced:
         self._loop = asyncio.get_running_loop()
         self._task = asyncio.current_task()
 
-        if self._stop.is_set():
-            return
-
-        while True:
+        while not self._stop.is_set():
             try:
                 await self._blocks_generator()
             except Exception:

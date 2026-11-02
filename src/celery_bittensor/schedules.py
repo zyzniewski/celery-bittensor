@@ -2,12 +2,15 @@ import atexit
 import datetime
 import queue
 import threading
+import time
 from collections.abc import Callable
 from typing import ClassVar
 
 import celery.schedules
 
 from .client import BittensorSynced, Block
+
+STOP_TIMEOUT = datetime.timedelta(seconds=5)
 
 
 class BaseBittensorSchedule(celery.schedules.BaseSchedule):
@@ -189,8 +192,10 @@ def stop_watchers() -> None:
     for watcher in BaseBittensorSchedule._clients.values():
         watcher.stop()
 
+    deadline = time.monotonic() + STOP_TIMEOUT.total_seconds()
+
     for watcher in BaseBittensorSchedule._clients.values():
-        watcher.join()
+        watcher.join(max(deadline - time.monotonic(), 0))
 
 
 atexit.register(stop_watchers)
