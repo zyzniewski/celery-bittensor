@@ -184,8 +184,6 @@ class schedule(BaseBittensorSchedule):
         base = self.last_run_at.number
         return base + (block - base) // self.run_every * self.run_every
 
-        return block - block % self.run_every
-
 
 def stop_watchers() -> None:
     for watcher in BaseBittensorSchedule._clients.values():
