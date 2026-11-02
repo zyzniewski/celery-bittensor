@@ -111,7 +111,11 @@ class BittensorSynced:
             logger.info("Awaiting for blocks on %s", self.network)
 
             async for block_header in client.blocks(finalized=self.finalized):
-                logger.info("New block seen on %s: %d", self.network, block_header.number)
+                logger.info(
+                    "New block seen on %s: %d",
+                    self.network,
+                    block_header.number,
+                )
 
                 block = Block(
                     block_header.number,
