@@ -134,12 +134,15 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         raise NotImplementedError
 
     def _time_until_next(self, block: Block) -> datetime.timedelta:
-        assert self.bittensor.block_time is not None
+        block_time = self.bittensor.block_time
+
+        if not block_time:
+            return self.interval
 
         target = self._next_block(block.number)
         elapsed = self.maybe_make_aware(self.now()) - block.timestamp
         remaining = (target - block.number) * datetime.timedelta(
-            seconds=self.bittensor.block_time
+            seconds=block_time,
         ) - elapsed
 
         return max(remaining, self.interval)
