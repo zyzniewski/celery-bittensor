@@ -198,14 +198,14 @@ class schedule(BaseBittensorSchedule):
         return base + (block - base) // self.run_every * self.run_every
 
 
-def stop_watchers() -> None:
-    for watcher in BaseBittensorSchedule._clients.values():
-        watcher.stop()
+def _stop_clients() -> None:
+    for client in BaseBittensorSchedule._clients.values():
+        client.stop()
 
     deadline = time.monotonic() + STOP_TIMEOUT.total_seconds()
 
-    for watcher in BaseBittensorSchedule._clients.values():
-        watcher.join(max(deadline - time.monotonic(), 0))
+    for client in BaseBittensorSchedule._clients.values():
+        client.join(max(deadline - time.monotonic(), 0))
 
 
-atexit.register(stop_watchers)
+atexit.register(_stop_clients)
