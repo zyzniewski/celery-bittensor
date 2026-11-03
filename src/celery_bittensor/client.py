@@ -5,7 +5,10 @@ import logging
 import queue
 import threading
 import weakref
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    import bittensor
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,11 @@ class BittensorSynced:
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task | None = None
+        self._client: bittensor.Client | None = None
+
+    @property
+    def connected(self) -> bool:
+        return self._client is not None
 
     def start(self) -> None:
         self._thread.start()
@@ -86,7 +94,7 @@ class BittensorSynced:
             try:
                 await self._blocks_generator()
             except Exception:
-                self.block_time = None
+                self._client = None
 
                 logger.exception(
                     "Error occured during processing on %s. Reconnecting in %ds",
@@ -104,14 +112,14 @@ class BittensorSynced:
         async with bittensor.Subtensor(
             network=self.network,
             retry_forever=True,
-        ) as client:
+        ) as self._client:
             logger.info("Connected to %s. Checking block time", self.network)
 
-            self.block_time = await client.block_time()
+            self.block_time = await self._client.block_time()
 
             logger.info("Awaiting for blocks on %s", self.network)
 
-            async for block_header in client.blocks(finalized=self.finalized):
+            async for block_header in self._client.blocks(finalized=self.finalized):
                 logger.info(
                     "New block seen on %s: %d",
                     self.network,

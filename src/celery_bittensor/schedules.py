@@ -93,7 +93,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         return self._bittensor
 
     def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
-        if self._blocks.empty() and not self.bittensor.block_time:
+        if self._blocks.empty() and not self.bittensor.connected:
             return celery.schedules.schedstate(
                 is_due=False, next=self.interval.total_seconds()
             )
@@ -134,15 +134,15 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         raise NotImplementedError
 
     def _time_until_next(self, block: Block) -> datetime.timedelta:
-        block_time = self.bittensor.block_time
-
-        if not block_time:
+        if not self.bittensor.connected:
             return self.interval
+
+        assert self.bittensor.block_time
 
         target = self._next_block(block.number)
         elapsed = self.maybe_make_aware(self.now()) - block.timestamp
         remaining = (target - block.number) * datetime.timedelta(
-            seconds=block_time,
+            seconds=self.bittensor.block_time,
         ) - elapsed
 
         return max(remaining, self.interval)
