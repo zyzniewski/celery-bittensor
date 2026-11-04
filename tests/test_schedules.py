@@ -3,10 +3,14 @@ import unittest.mock
 
 import pytest
 
-from celery_bittensor import schedule
+from celery_bittensor import (
+    epoch,
+    schedule,
+)
 from celery_bittensor.client import (
     BittensorSubscriber,
     Block,
+    Subnet,
 )
 
 BLOCK_TIME = datetime.timedelta(seconds=12)
@@ -111,6 +115,39 @@ def test_schedule_is_due(scheduler, last_run_at, block_number, is_due):
     scheduler._bittensor._client = unittest.mock.Mock(
         block_time=BLOCK_TIME.total_seconds(),
         connected=True,
+    )
+    scheduler._bittensor.blocks.put_nowait(Block(block_number, now))
+
+    assert scheduler.is_due(now).is_due is is_due
+
+
+@pytest.mark.parametrize(
+    "scheduler, last_run_at, block_number, is_due",
+    [
+        (epoch("0"), 1, 5, True),
+        (epoch("*/5"), 100, 100, False),
+        (epoch("*/5"), 100, 101, False),
+        (epoch("*/5"), 100, 102, False),
+        (epoch("*/5"), 100, 103, False),
+        (epoch("*/5"), 100, 104, False),
+        (epoch("*/5"), 100, 105, True),
+        (epoch("*/5"), 105, 106, False),
+    ],
+)
+def test_epoch_is_due(scheduler, last_run_at, block_number, is_due):
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    scheduler.last_run_at = Block(last_run_at, now)
+    scheduler._bittensor = BittensorSubscriber()
+    scheduler._bittensor._client = unittest.mock.Mock(
+        block_time=BLOCK_TIME.total_seconds(),
+        connected=True,
+        subnets={
+            0: Subnet(
+                tempo=100,
+                epoch=5,
+            ),
+        },
     )
     scheduler._bittensor.blocks.put_nowait(Block(block_number, now))
 

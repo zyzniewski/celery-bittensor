@@ -2,7 +2,7 @@ import atexit
 import datetime
 import queue
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import ClassVar
 
 import celery.schedules
@@ -11,6 +11,7 @@ from .client import (
     BittensorSubscriber,
     BittensorSynced,
     Block,
+    Subnet,
 )
 from .thread import LoopThread
 
@@ -201,6 +202,125 @@ class schedule(BaseBittensorSchedule):
 
         base = self.last_run_at.number
         return base + (block - base) // self.run_every * self.run_every
+
+
+class epoch(BaseBittensorSchedule):
+    def __init__(
+        self,
+        block: celery.schedules.Cronspec = "*",
+        netuid: int = 0,
+        **kwargs,
+    ):
+        super().__init__(
+            **kwargs,
+        )
+
+        self.block = block
+        self.netuid = netuid
+
+        self.subnet: Subnet | None = None
+        self.blocks: list[int] = []
+
+    @staticmethod
+    def _expand_cronspec(
+        cronspec: celery.schedules.Cronspec,
+        tempo: int,
+    ) -> list[int]:
+        if isinstance(cronspec, int):
+            result = {cronspec}
+        elif isinstance(cronspec, str):
+            result = celery.schedules.crontab_parser(tempo).parse(cronspec)
+        elif isinstance(cronspec, set):
+            result = cronspec
+        elif isinstance(cronspec, Iterable):
+            result = set(cronspec)  # type: ignore
+        else:
+            raise TypeError(
+                celery.schedules.CRON_INVALID_TYPE.format(type=type(cronspec))
+            )
+
+        return sorted(number for number in result if 0 <= number < tempo)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, epoch):
+            return (
+                self.block == other.block
+                and self.netuid == other.netuid
+                and super().__eq__(other)
+            )
+
+        return NotImplemented
+
+    def __getstate__(self) -> dict:
+        state = super().__getstate__()
+        state.update(
+            {
+                "block": self.block,
+                "blocks": [],
+                "netuid": self.netuid,
+                "subnet": None,
+            }
+        )
+
+        return state
+
+    def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
+        # wait for subnet info
+        try:
+            subnet = self.bittensor.subnets[self.netuid]
+        except KeyError:
+            if self.bittensor.connected:
+                self._thread.submit(self.bittensor.fetch_subnets())
+
+            return celery.schedules.schedstate(
+                False,
+                self.interval.total_seconds(),
+            )
+
+        # regenerate blocks from cronspec for a given tempo
+        if (not self.subnet or self.subnet.tempo != subnet.tempo) and isinstance(
+            self.block,
+            str,
+        ):
+            self.blocks = self._expand_cronspec(self.block, subnet.tempo)
+
+        self.subnet = subnet
+
+        if self.subnet.tempo == 0 or not self.blocks:
+            return celery.schedules.schedstate(
+                False,
+                self.interval.total_seconds(),
+            )
+
+        return super().is_due(last_run_at)
+
+    def _next_block(self, block: int) -> int:
+        assert self.subnet
+
+        start = (
+            self.subnet.epoch
+            + (block - self.subnet.epoch) // self.subnet.tempo * self.subnet.tempo
+        )
+
+        for offset in self.blocks:
+            if start + offset > block:
+                return start + offset
+
+        return start + self.subnet.tempo + self.blocks[0]
+
+    def _prev_block(self, block: int) -> int:
+        assert self.subnet
+
+        start = (
+            self.subnet.epoch
+            + (block - self.subnet.epoch) // self.subnet.tempo * self.subnet.tempo
+        )
+
+        for offset in reversed(self.blocks):
+            if start + offset <= block:
+                return start + offset
+
+        return start - self.subnet.tempo + self.blocks[-1]
 
 
 def _stop_clients() -> None:

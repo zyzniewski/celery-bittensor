@@ -5,10 +5,9 @@ import logging
 import queue
 import threading
 import weakref
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
-if TYPE_CHECKING:
-    import bittensor
+import bittensor
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,11 @@ logger = logging.getLogger(__name__)
 class Block(NamedTuple):
     number: int
     timestamp: datetime.datetime
+
+
+class Subnet(NamedTuple):
+    tempo: int
+    epoch: int
 
 
 class BittensorSynced:
@@ -31,11 +35,13 @@ class BittensorSynced:
 
         self.block_time: float | None = None
         self.block: Block | None = None
+        self.subnets: dict[int, Subnet] = {}
 
         self._blocks = weakref.WeakSet[asyncio.Queue]()
         self._client: bittensor.Client | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop = threading.Event()
+        self._subnets = asyncio.Semaphore()
         self._task: asyncio.Task | None = None
 
     @property
@@ -50,6 +56,27 @@ class BittensorSynced:
     @property
     def connected(self) -> bool:
         return self._client is not None
+
+    async def fetch_subnets(self) -> None:
+        if not self._client:
+            return
+
+        if self._subnets.locked():
+            return
+
+        async with self._subnets:
+            logger.info("Fetching subnets from %s", self.network)
+
+            snapshot = await self._client.at()
+            tempos, epochs = await asyncio.gather(
+                snapshot.query_map(bittensor.storage.SubtensorModule.Tempo),
+                snapshot.query_map(bittensor.storage.SubtensorModule.LastEpochBlock),
+            )
+
+            self.subnets = {
+                netuid: Subnet(tempo, epoch)
+                for (netuid, tempo), (_, epoch) in zip(tempos, epochs)
+            }
 
     async def run(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -82,8 +109,6 @@ class BittensorSynced:
             loop.call_soon_threadsafe(task.cancel)
 
     async def _blocks_generator(self) -> None:
-        import bittensor
-
         logger.info("Connecting to %s", self.network)
 
         try:
@@ -145,6 +170,19 @@ class BittensorSubscriber:
     async def attach(self, client: BittensorSynced):
         self._client = client
         self._task = asyncio.create_task(self._watch())
+
+    @property
+    def subnets(self) -> dict[int, Subnet]:
+        if not self._client:
+            return {}
+
+        return self._client.subnets
+
+    async def fetch_subnets(self) -> None:
+        if not self._client:
+            return
+
+        return await self._client.fetch_subnets()
 
     async def _watch(self):
         try:
