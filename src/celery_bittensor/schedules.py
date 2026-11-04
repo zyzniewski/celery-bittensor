@@ -2,26 +2,31 @@ import atexit
 import datetime
 import queue
 import threading
-import time
 from collections.abc import Callable
 from typing import ClassVar
 
 import celery.schedules
 
-from .client import BittensorSynced, Block
+from .client import (
+    BittensorSubscriber,
+    BittensorSynced,
+    Block,
+)
+from .thread import LoopThread
 
 STOP_TIMEOUT = datetime.timedelta(seconds=5)
 
 
 class BaseBittensorSchedule(celery.schedules.BaseSchedule):
-    _lock: ClassVar[threading.Lock] = threading.Lock()
     _clients: ClassVar[dict[tuple[str, bool], BittensorSynced]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
+    _thread: ClassVar[LoopThread | None] = None
 
     def __init__(
         self,
         network: str = "finney",
         finalized: bool = True,
-        backlog: int = 0,
+        backlog: int = -1,
         interval: datetime.timedelta | float = datetime.timedelta(seconds=1.0),
         nowfun: Callable | None = None,
         app: celery.Celery | None = None,
@@ -33,11 +38,11 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
 
         self.network = network
         self.finalized = finalized
+        self.backlog = backlog
         self.interval = interval
         self.last_run_at = Block(0, self.maybe_make_aware(datetime.datetime.min))
 
-        self._bittensor: BittensorSynced | None = None
-        self._blocks = queue.Queue[Block](maxsize=backlog)
+        self._bittensor: BittensorSubscriber | None = None
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BaseBittensorSchedule):
@@ -52,7 +57,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
 
     def __getstate__(self) -> dict:
         return {
-            "backlog": self._blocks.maxsize,
+            "backlog": self.backlog,
             "finalized": self.finalized,
             "interval": self.interval,
             "last_run_at": self.last_run_at,
@@ -63,43 +68,43 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
     def __setstate__(self, state: dict) -> None:
         state.setdefault("interval", datetime.timedelta(seconds=1.0))
 
-        backlog = state.pop("backlog", 0)
-
         self.__dict__.update(state)
         self._app = None
         self._bittensor = None
-        self._blocks = queue.Queue[Block](maxsize=backlog)
+
+    @classmethod
+    def get_client(cls, network: str, finalized: bool) -> BittensorSynced:
+        with cls._lock:
+            if (network, finalized) not in cls._clients:
+                if not cls._thread:
+                    cls._thread = LoopThread()
+                    cls._thread.start()
+
+                client = BittensorSynced(network, finalized)
+
+                cls._thread.submit(client.run())
+                cls._clients[(network, finalized)] = client
+
+            return cls._clients[(network, finalized)]
 
     @property
-    def bittensor(self) -> BittensorSynced:
+    def bittensor(self) -> BittensorSubscriber:
         if not self._bittensor:
-            with BaseBittensorSchedule._lock:
-                if (self.network, self.finalized) not in BaseBittensorSchedule._clients:
-                    BaseBittensorSchedule._clients[(self.network, self.finalized)] = (
-                        BittensorSynced(
-                            network=self.network,
-                            finalized=self.finalized,
-                        )
-                    )
-                    BaseBittensorSchedule._clients[
-                        (self.network, self.finalized)
-                    ].start()
+            client = BaseBittensorSchedule.get_client(self.network, self.finalized)
 
-                self._bittensor = BaseBittensorSchedule._clients[
-                    (self.network, self.finalized)
-                ]
-                self._bittensor.blocks.subscribe(self._blocks)
+            self._bittensor = BittensorSubscriber(self.backlog)
+            self._thread.submit(self._bittensor.attach(client))
 
         return self._bittensor
 
     def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
-        if self._blocks.empty() and not self.bittensor.connected:
+        if self.bittensor.blocks.empty() and not self.bittensor.connected:
             return celery.schedules.schedstate(
                 is_due=False, next=self.interval.total_seconds()
             )
 
         try:
-            block = self._blocks.get_nowait()
+            block = self.bittensor.blocks.get_nowait()
         except queue.Empty:
             if self.last_run_at.number == 0:
                 return celery.schedules.schedstate(
@@ -107,6 +112,8 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
                 )
 
             block = self.last_run_at
+        else:
+            self.bittensor.blocks.task_done()
 
         if self.last_run_at.number == 0:
             self.last_run_at = block
@@ -116,7 +123,7 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         if is_due:
             self.last_run_at = block
 
-        if not self._blocks.empty():
+        if not self.bittensor.blocks.empty():
             return celery.schedules.schedstate(
                 is_due=is_due,
                 next=0,
@@ -134,10 +141,8 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         raise NotImplementedError
 
     def _time_until_next(self, block: Block) -> datetime.timedelta:
-        if not self.bittensor.connected:
+        if not self.bittensor.block_time:
             return self.interval
-
-        assert self.bittensor.block_time
 
         target = self._next_block(block.number)
         elapsed = self.maybe_make_aware(self.now()) - block.timestamp
@@ -202,10 +207,12 @@ def _stop_clients() -> None:
     for client in BaseBittensorSchedule._clients.values():
         client.stop()
 
-    deadline = time.monotonic() + STOP_TIMEOUT.total_seconds()
+    BaseBittensorSchedule._clients.clear()
 
-    for client in BaseBittensorSchedule._clients.values():
-        client.join(max(deadline - time.monotonic(), 0))
+    if BaseBittensorSchedule._thread:
+        BaseBittensorSchedule._thread.stop()
+        BaseBittensorSchedule._thread.join(STOP_TIMEOUT.total_seconds())
+        BaseBittensorSchedule._thread = None
 
 
 atexit.register(_stop_clients)

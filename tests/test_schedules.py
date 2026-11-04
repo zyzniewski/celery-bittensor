@@ -4,7 +4,10 @@ import unittest.mock
 import pytest
 
 from celery_bittensor import schedule
-from celery_bittensor.client import Block
+from celery_bittensor.client import (
+    BittensorSubscriber,
+    Block,
+)
 
 BLOCK_TIME = datetime.timedelta(seconds=12)
 
@@ -29,11 +32,18 @@ BLOCK_TIME = datetime.timedelta(seconds=12)
     ],
 )
 def test_schedule_prev_block(scheduler, last_run_at, block_number, prev_block):
-    scheduler.last_run_at = Block(last_run_at, datetime.datetime.now())
-    scheduler._bittensor = unittest.mock.Mock(
-        block_time=BLOCK_TIME.total_seconds(),
+    scheduler.last_run_at = Block(
+        last_run_at,
+        datetime.datetime.now(datetime.timezone.utc),
     )
-    scheduler._blocks.put_nowait(Block(block_number, datetime.datetime.now()))
+    scheduler._bittensor = BittensorSubscriber()
+    scheduler._bittensor._client = unittest.mock.Mock(
+        block_time=BLOCK_TIME.total_seconds(),
+        connected=True,
+    )
+    scheduler._bittensor.blocks.put_nowait(
+        Block(block_number, datetime.datetime.now(datetime.timezone.utc))
+    )
 
     assert scheduler._prev_block(block_number) == prev_block
 
@@ -58,11 +68,18 @@ def test_schedule_prev_block(scheduler, last_run_at, block_number, prev_block):
     ],
 )
 def test_schedule_next_block(scheduler, last_run_at, block_number, next_block):
-    scheduler.last_run_at = Block(last_run_at, datetime.datetime.now())
-    scheduler._bittensor = unittest.mock.Mock(
-        block_time=BLOCK_TIME.total_seconds(),
+    scheduler.last_run_at = Block(
+        last_run_at,
+        datetime.datetime.now(datetime.timezone.utc),
     )
-    scheduler._blocks.put_nowait(Block(block_number, datetime.datetime.now()))
+    scheduler._bittensor = BittensorSubscriber()
+    scheduler._bittensor._client = unittest.mock.Mock(
+        block_time=BLOCK_TIME.total_seconds(),
+        connected=True,
+    )
+    scheduler._bittensor.blocks.put_nowait(
+        Block(block_number, datetime.datetime.now(datetime.timezone.utc))
+    )
 
     assert scheduler._next_block(block_number) == next_block
 
@@ -90,9 +107,11 @@ def test_schedule_is_due(scheduler, last_run_at, block_number, is_due):
     now = datetime.datetime.now(datetime.timezone.utc)
 
     scheduler.last_run_at = Block(last_run_at, now)
-    scheduler._bittensor = unittest.mock.Mock(
+    scheduler._bittensor = BittensorSubscriber()
+    scheduler._bittensor._client = unittest.mock.Mock(
         block_time=BLOCK_TIME.total_seconds(),
+        connected=True,
     )
-    scheduler._blocks.put_nowait(Block(block_number, now))
+    scheduler._bittensor.blocks.put_nowait(Block(block_number, now))
 
     assert scheduler.is_due(now).is_due is is_due
