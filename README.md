@@ -42,6 +42,20 @@ def setup_periodic_tasks(sender: celery.Celery, **kwargs):
         name="add every 10 on testnet",
     )
 
+    # Calls test('hello') at first 10 blocks each epoch in subnet 1
+    sender.add_periodic_task(
+        celery_bittensor.epoch("0-9", netuid=1),
+        test.s("hello"),
+        name="first 10 block each epoch",
+    )
+
+    # Calls test('hello') at 50th and 75th block each epoch in subnet 1
+    sender.add_periodic_task(
+        celery_bittensor.epoch("49,74", netuid=1),
+        test.s("hello"),
+        name="50 and 75 block each epoch",
+    )
+
 
 @app.task
 def test(arg):
