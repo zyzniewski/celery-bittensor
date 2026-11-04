@@ -279,10 +279,7 @@ class epoch(BaseBittensorSchedule):
             )
 
         # regenerate blocks from cronspec for a given tempo
-        if (not self.subnet or self.subnet.tempo != subnet.tempo) and isinstance(
-            self.block,
-            str,
-        ):
+        if not self.subnet or self.subnet.tempo != subnet.tempo:
             self.blocks = self._expand_cronspec(self.block, subnet.tempo)
 
         self.subnet = subnet
