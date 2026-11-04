@@ -125,6 +125,10 @@ def test_schedule_is_due(scheduler, last_run_at, block_number, is_due):
     "scheduler, last_run_at, block_number, is_due",
     [
         (epoch("0"), 1, 5, True),
+        (epoch("0-1"), 5, 104, False),
+        (epoch("0-1"), 5, 105, True),
+        (epoch("0-1"), 105, 106, True),
+        (epoch("0-1"), 105, 107, False),
         (epoch("*/5"), 100, 100, False),
         (epoch("*/5"), 100, 101, False),
         (epoch("*/5"), 100, 102, False),

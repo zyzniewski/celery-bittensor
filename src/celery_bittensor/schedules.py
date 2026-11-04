@@ -119,7 +119,8 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         if self.last_run_at.number == 0:
             self.last_run_at = block
 
-        is_due = self._prev_block(block.number) > self.last_run_at.number
+        prev_block = self._prev_block(block.number)
+        is_due = prev_block == block.number and prev_block > self.last_run_at.number
 
         if is_due:
             self.last_run_at = block
