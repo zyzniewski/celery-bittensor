@@ -62,6 +62,13 @@ def test(arg):
     print(arg)
 ```
 
+Bittensor tasks may be rescheduled (awaiting connection, etc.).
+Please run Beat with the celery_bittensor Scheduler:
+
+```
+celery -A tasks beat --scheduler celery_bittensor.PersistentScheduler
+```
+
 ## License
 
 BSD 3-Clause License, see [LICENSE](LICENSE).
