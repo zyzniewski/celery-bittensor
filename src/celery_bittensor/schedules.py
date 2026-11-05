@@ -3,7 +3,7 @@ import datetime
 import queue
 import threading
 from collections.abc import Callable, Iterable
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 import celery.schedules
 
@@ -16,6 +16,12 @@ from .client import (
 from .thread import LoopThread
 
 STOP_TIMEOUT = datetime.timedelta(seconds=5)
+
+
+class schedstate(NamedTuple):
+    is_due: bool
+    next: float
+    block: Block | None = None
 
 
 class BaseBittensorSchedule(celery.schedules.BaseSchedule):
@@ -99,17 +105,27 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
         return self._bittensor
 
     def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
+        is_due, next_time, _ = self.is_due_block(last_run_at)
+
+        return celery.schedules.schedstate(
+            is_due=is_due,
+            next=next_time,
+        )
+
+    def is_due_block(self, last_run_at: datetime.datetime) -> schedstate:
         if self.bittensor.blocks.empty() and not self.bittensor.connected:
-            return celery.schedules.schedstate(
-                is_due=False, next=self.interval.total_seconds()
+            return schedstate(
+                is_due=False,
+                next=self.interval.total_seconds(),
             )
 
         try:
             block = self.bittensor.blocks.get_nowait()
         except queue.Empty:
             if self.last_run_at.number == 0:
-                return celery.schedules.schedstate(
-                    is_due=False, next=self.interval.total_seconds()
+                return schedstate(
+                    is_due=False,
+                    next=self.interval.total_seconds(),
                 )
 
             block = self.last_run_at
@@ -126,14 +142,16 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
             self.last_run_at = block
 
         if not self.bittensor.blocks.empty():
-            return celery.schedules.schedstate(
+            return schedstate(
                 is_due=is_due,
                 next=0,
+                block=block,
             )
 
-        return celery.schedules.schedstate(
+        return schedstate(
             is_due=is_due,
             next=self._time_until_next(block).total_seconds(),
+            block=block,
         )
 
     def _next_block(self, block: int) -> int:
@@ -265,7 +283,7 @@ class epoch(BaseBittensorSchedule):
 
         return state
 
-    def is_due(self, last_run_at: datetime.datetime) -> celery.schedules.schedstate:
+    def is_due_block(self, last_run_at: datetime.datetime) -> schedstate:
         # wait for subnet info
         try:
             subnet = self.bittensor.subnets[self.netuid]
@@ -273,7 +291,7 @@ class epoch(BaseBittensorSchedule):
             if self.bittensor.connected:
                 self._thread.submit(self.bittensor.fetch_subnets())
 
-            return celery.schedules.schedstate(
+            return schedstate(
                 False,
                 self.interval.total_seconds(),
             )
@@ -285,12 +303,12 @@ class epoch(BaseBittensorSchedule):
         self.subnet = subnet
 
         if self.subnet.tempo == 0 or not self.blocks:
-            return celery.schedules.schedstate(
+            return schedstate(
                 False,
                 self.interval.total_seconds(),
             )
 
-        return super().is_due(last_run_at)
+        return super().is_due_block(last_run_at)
 
     def _next_block(self, block: int) -> int:
         assert self.subnet
