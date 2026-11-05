@@ -13,6 +13,9 @@ class LazyBlockNumber(celery.beat.BeatLazyFunc):
             entry,
         )
 
+    def __eq__(self, other):
+        return bool(isinstance(other, LazyBlockNumber))
+
     def __reduce__(self):
         return (self.__class__, (None,))
 
