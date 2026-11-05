@@ -29,7 +29,7 @@ app.conf.beat_schedule = {
     "add-every-10-finalized-blocks-relative-to-0": {
         "task": "tasks.test",
         "schedule": celery_bittensor.schedule(
-            run_every=1,
+            run_every=10,
             relative=True,
         ),
         "args": ("Every 10 Blocks",),
