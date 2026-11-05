@@ -34,9 +34,7 @@ class ScheduleEntry(celery.beat.ScheduleEntry):
             for arg in self.args
         ]
         self.kwargs = {
-            key: LazyBlockNumber(self)
-            if isinstance(value, LazyBlockNumber)
-            else value
+            key: LazyBlockNumber(self) if isinstance(value, LazyBlockNumber) else value
             for key, value in self.kwargs.items()
         }
 
