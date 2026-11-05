@@ -17,53 +17,67 @@ import celery
 import celery_bittensor
 
 app = celery.Celery()
+app.conf.beat_scheduler = "celery_bittensor.PersistentScheduler"
+app.conf.beat_schedule = {
+    "add-every-finalized-block": {
+        "task": "tasks.test",
+        "schedule": celery_bittensor.schedule(
+            run_every=1,
+        ),
+        "args": ("New Block",),
+    },
+    "add-every-10-finalized-blocks-relative-to-0": {
+        "task": "tasks.test",
+        "schedule": celery_bittensor.schedule(
+            run_every=1,
+            relative=True,
+        ),
+        "args": ("Every 10 Blocks",),
+    },
+    "add-every-block-on-testnet": {
+        "task": "tasks.test",
+        "schedule": celery_bittensor.schedule(
+            run_every=1,
+            network="test",
+            finalized=False,
+        ),
+        "args": ("New Test Block",),
+    },
+    "add-first-10-epoch": {
+        "task": "tasks.test",
+        "schedule": celery_bittensor.epoch(
+            block="0-9",
+            netuid=1,
+        ),
+        "args": ("First 10 Blocks of Subnet 1 Epoch",),
+    },
+    "add-50-and-75-epoch": {
+        "task": "tasks.test_block",
+        "schedule": celery_bittensor.epoch(
+            block="49,74",
+            netuid=1,
+        ),
+        "args": ("50th and 75th Block of Subnet #1 Epoch",),
+        "kwargs": {
+            "block": celery_bittensor.LazyBlockNumber(),
+        },
+    },
+}
 
-
-@app.on_after_configure.connect
-def setup_periodic_tasks(sender: celery.Celery, **kwargs):
-    # Calls test('hello') every 10 finalized blocks.
-    sender.add_periodic_task(
-        celery_bittensor.schedule(run_every=10),
-        test.s("hello"),
-        name="add every 10",
-    )
-
-    # Calls test('hello') every 10 finalized blocks relative to block number 0.
-    sender.add_periodic_task(
-        celery_bittensor.schedule(run_every=10, relative=True),
-        test.s("hello"),
-        name="add every 10 relative to 0",
-    )
-
-    # Calls test('hello') every 10 new blocks on testnet.
-    sender.add_periodic_task(
-        celery_bittensor.schedule(run_every=10, finalized=False, network="test"),
-        test.s("hello"),
-        name="add every 10 on testnet",
-    )
-
-    # Calls test('hello') at first 10 blocks each epoch in subnet 1
-    sender.add_periodic_task(
-        celery_bittensor.epoch("0-9", netuid=1),
-        test.s("hello"),
-        name="first 10 block each epoch",
-    )
-
-    # Calls test('hello') at 50th and 75th block each epoch in subnet 1
-    sender.add_periodic_task(
-        celery_bittensor.epoch("49,74", netuid=1),
-        test.s("hello"),
-        name="50 and 75 block each epoch",
-    )
 
 
 @app.task
 def test(arg):
     print(arg)
+
+
+@app.task
+def test_block(arg, block):
+    print(f"Block {block}: {arg}")
 ```
 
 Bittensor tasks may be rescheduled (awaiting connection, etc.).
-Please run Beat with the celery_bittensor Scheduler:
+Please run Beat with `celery_bittensor.PersistentScheduler`:
 
 ```
 celery -A tasks beat --scheduler celery_bittensor.PersistentScheduler
