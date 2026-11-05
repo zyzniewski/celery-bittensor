@@ -7,7 +7,7 @@ Bittensor's Schedule for Celery
 pip install celery-bittensor
 ```
 
-Requires Python 3.10+.
+Requires Celery 5.7+ and Python 3.10+.
 
 
 ## Example
@@ -17,7 +17,6 @@ import celery
 import celery_bittensor
 
 app = celery.Celery()
-app.conf.beat_scheduler = "celery_bittensor.PersistentScheduler"
 app.conf.beat_schedule = {
     "add-every-finalized-block": {
         "task": "tasks.test",
@@ -76,8 +75,7 @@ def test_block(arg, block):
     print(f"Block {block}: {arg}")
 ```
 
-Bittensor tasks may be rescheduled (awaiting connection, etc.).
-Please run Beat with `celery_bittensor.PersistentScheduler`:
+In order to use `celery_bittensor.LazyBlockNumber()` please run Beat with `celery_bittensor.PersistentScheduler`:
 
 ```
 celery -A tasks beat --scheduler celery_bittensor.PersistentScheduler

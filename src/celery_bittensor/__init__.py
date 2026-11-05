@@ -1,7 +1,7 @@
 from .beat import (
     LazyBlockNumber,
     PersistentScheduler,
-    Scheduler,
+    ScheduleEntry,
 )
 from .schedules import (
     epoch,
@@ -12,7 +12,7 @@ from .version import __version__
 __all__ = [
     "LazyBlockNumber",
     "PersistentScheduler",
-    "Scheduler",
+    "ScheduleEntry",
     "__version__",
     "epoch",
     "schedule",
