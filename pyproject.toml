@@ -26,6 +26,9 @@ dynamic = ["version"]
 Homepage = "https://github.com/zyzniewski/celery-bittensor"
 Issues = "https://github.com/zyzniewski/celery-bittensor/issues"
 
+[project.entry-points."celery.beat_schedulers"]
+celery_bittensor = "celery_bittensor.beat:PersistentScheduler"
+
 [tool.hatch.version]
 path = "src/celery_bittensor/version.py"
 

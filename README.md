@@ -75,10 +75,10 @@ def test_block(arg, block):
     print(f"Block {block}: {arg}")
 ```
 
-In order to use `celery_bittensor.LazyBlockNumber()` please run Beat with `celery_bittensor.PersistentScheduler`:
+In order to use `celery_bittensor.LazyBlockNumber()` please run Beat with `celery_bittensor` scheduler:
 
 ```
-celery -A tasks beat --scheduler celery_bittensor.PersistentScheduler
+celery -A tasks beat --scheduler celery_bittensor
 ```
 
 ## License
