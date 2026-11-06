@@ -100,6 +100,9 @@ class BaseBittensorSchedule(celery.schedules.BaseSchedule):
             client = BaseBittensorSchedule.get_client(self.network, self.finalized)
 
             self._bittensor = BittensorSubscriber(self.backlog)
+
+            assert self._thread is not None
+
             self._thread.submit(self._bittensor.attach(client))
 
         return self._bittensor
@@ -289,6 +292,8 @@ class epoch(BaseBittensorSchedule):
             subnet = self.bittensor.subnets[self.netuid]
         except KeyError:
             if self.bittensor.connected:
+                assert self._thread is not None
+
                 self._thread.submit(self.bittensor.fetch_subnets())
 
             return schedstate(
