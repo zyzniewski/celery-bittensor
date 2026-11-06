@@ -11,8 +11,20 @@ description = "Celery's Bittensor Schedule"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Celery",
+    "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
 ]
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -21,6 +33,7 @@ dependencies = [
     "celery >= 5.7.0, < 6.0",
 ]
 dynamic = ["version"]
+keywords = ["celery", "beat", "periodic", "task", "bittensor"]
 
 [project.urls]
 Homepage = "https://github.com/zyzniewski/celery-bittensor"
