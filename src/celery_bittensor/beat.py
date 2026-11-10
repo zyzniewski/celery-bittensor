@@ -29,14 +29,7 @@ class ScheduleEntry(celery.beat.ScheduleEntry):
         super().__init__(*args, **kwargs)
 
         self.block = None
-        self.args = [
-            LazyBlockNumber(self) if isinstance(arg, LazyBlockNumber) else arg
-            for arg in self.args
-        ]
-        self.kwargs = {
-            key: LazyBlockNumber(self) if isinstance(value, LazyBlockNumber) else value
-            for key, value in self.kwargs.items()
-        }
+        self._bind_lazy()
 
     def is_due(self):
         if not isinstance(self.schedule, BaseBittensorSchedule):
@@ -48,6 +41,21 @@ class ScheduleEntry(celery.beat.ScheduleEntry):
             is_due,
             next_time,
         )
+
+    def update(self, other):
+        super().update(other)
+
+        self._bind_lazy()
+
+    def _bind_lazy(self):
+        self.args = [
+            LazyBlockNumber(self) if isinstance(arg, LazyBlockNumber) else arg
+            for arg in self.args
+        ]
+        self.kwargs = {
+            key: LazyBlockNumber(self) if isinstance(value, LazyBlockNumber) else value
+            for key, value in self.kwargs.items()
+        }
 
 
 class PersistentScheduler(celery.beat.PersistentScheduler):
